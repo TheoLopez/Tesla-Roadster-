@@ -26,7 +26,7 @@ const QUALITY = {
 };
 
 function loadSave() {
-  const defaults = { unlocked: 1, best: {}, paint: 'red', quality: isTouch ? 'medium' : 'high', music: 0.55, sfx: 0.85, camera: 0 };
+  const defaults = { unlocked: 1, best: {}, paint: 'white', quality: isTouch ? 'medium' : 'high', music: 0.55, sfx: 0.85, camera: 0 };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') };
   } catch {

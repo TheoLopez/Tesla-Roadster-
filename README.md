@@ -33,6 +33,7 @@ En pantallas táctiles aparecen botones en pantalla.
 
 ## Mecánicas
 
+- **Colores**: Blanco Perla (por defecto), Rojo Multicapa, Negro, Azul y Plata.
 - **Aceleración real**: 0-100 km/h en ~1,9 s, 187 km/h de velocidad máxima y hasta ~280 km/h con el propulsor trasero.
 - **Propulsores de gas frío**: `Espacio` lanza el coche; si lo mantienes en el aire, los propulsores de sustentación lo hacen flotar hasta ~5 m. Todo consume la barra de **PROPULSORES**, que se recarga sobre el asfalto y con las **celdas de energía**.
 - **Obstáculos**: barreras, conos (se pueden derribar), huecos y socavones, arroyos con puentes caídos, trancones, tráfico en ambos sentidos y cruzado, camiones altos, peatones cruzando y desfiles. Tocar a un peatón o a un vehículo, o caer a un hueco, te devuelve al último checkpoint con +5 s.
@@ -71,4 +72,14 @@ src/fx.js          partículas y lluvia
 
 ## Publicar
 
-El workflow `.github/workflows/deploy.yml` publica `dist/` en GitHub Pages al hacer push a `main` (o manualmente). Activa *Settings → Pages → Source: GitHub Actions* en el repositorio.
+El juego es un sitio estático (`dist/`), así que sirve cualquier hosting estático.
+
+**Firebase Hosting** (configurado en `firebase.json`):
+
+```bash
+npx firebase-tools login
+npx firebase-tools use --add      # elige o crea tu proyecto de Firebase
+npm run deploy:firebase           # compila y publica en https://<proyecto>.web.app
+```
+
+**GitHub Pages**: el workflow `.github/workflows/deploy.yml` publica `dist/` al hacer push a `main` (o manualmente). Activa *Settings → Pages → Source: GitHub Actions* en el repositorio.

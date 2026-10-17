@@ -3,14 +3,14 @@ import { glowTexture } from './textures.js';
 
 // Car faces -Z. Length ~4.3 m, width ~2.0 m, height ~1.2 m, inspired by the 2nd gen Roadster.
 export const PAINTS = {
+  white: { name: 'Blanco Perla', color: 0xf0f0ec, metalness: 0.12, roughness: 0.18 },
   red: { name: 'Rojo Multicapa', color: 0x9e0610, metalness: 0.55, roughness: 0.26 },
-  white: { name: 'Blanco Perla', color: 0xe8e8e4, metalness: 0.15, roughness: 0.22 },
   black: { name: 'Negro Sólido', color: 0x0b0c0e, metalness: 0.35, roughness: 0.2 },
   blue: { name: 'Azul Profundo', color: 0x0f2a6b, metalness: 0.6, roughness: 0.28 },
   silver: { name: 'Plata Quicksilver', color: 0x8d9297, metalness: 0.95, roughness: 0.22 },
 };
 
-const WHEEL_R = 0.33;
+const WHEEL_R = 0.355;
 
 const LEN = 4.36;
 const HALF_LEN = LEN / 2;
@@ -32,17 +32,22 @@ function curve(points) {
 }
 
 // Side profile and plan view of the body, u = -1 at the nose, +1 at the tail.
-const BODY_TOP = curve([[-1, 0.4], [-0.9, 0.56], [-0.7, 0.7], [-0.45, 0.79], [-0.2, 0.86], [0.2, 0.92], [0.62, 0.96], [0.86, 0.95], [1, 0.8]]);
-const BODY_BOTTOM = curve([[-1, 0.3], [-0.85, 0.18], [0.85, 0.18], [1, 0.3]]);
-const BODY_WIDTH = curve([[-1, 0.55], [-0.85, 0.86], [-0.6, 0.98], [-0.35, 0.95], [0, 0.93], [0.35, 0.96], [0.6, 1.0], [0.85, 0.96], [1, 0.8]]);
-const CANOPY_TOP = curve([[-1, 0.8], [-0.55, 1.06], [-0.1, 1.2], [0.35, 1.19], [0.75, 1.07], [1, 0.9]]);
-const CANOPY_WIDTH = curve([[-1, 0.62], [-0.4, 0.74], [0.3, 0.72], [1, 0.55]]);
-const CANOPY_Z0 = -1.0, CANOPY_Z1 = 1.55;
+// Long low nose, hood dipping between raised front fenders, wide rear haunches and a ducktail.
+const BODY_TOP = curve([[-1, 0.38], [-0.92, 0.55], [-0.72, 0.68], [-0.45, 0.76], [-0.2, 0.8], [0.2, 0.83], [0.6, 0.87], [0.88, 0.89], [0.97, 0.85], [1, 0.72]]);
+const BODY_BOTTOM = curve([[-1, 0.3], [-0.86, 0.17], [0.86, 0.17], [1, 0.32]]);
+const BODY_WIDTH = curve([[-1, 0.5], [-0.86, 0.88], [-0.6, 0.98], [-0.32, 0.93], [0.05, 0.92], [0.4, 0.99], [0.62, 1.03], [0.86, 0.97], [1, 0.8]]);
+// hood dip between fenders (front) and haunch swell over the rear wheels, applied on the upper surface
+const HOOD_DIP = curve([[-1, 0.02], [-0.8, 0.1], [-0.55, 0.1], [-0.4, 0.0], [1, 0]]);
+const HAUNCH = curve([[-1, 0], [0.25, 0], [0.55, 0.05], [0.8, 0.03], [1, 0]]);
+// black glass teardrop canopy: windshield starts far forward, long rear glass
+const CANOPY_TOP = curve([[-1, 0.76], [-0.6, 1.0], [-0.2, 1.16], [0.2, 1.15], [0.6, 1.04], [1, 0.88]]);
+const CANOPY_WIDTH = curve([[-1, 0.6], [-0.45, 0.76], [0.2, 0.74], [0.7, 0.6], [1, 0.42]]);
+const CANOPY_Z0 = -0.95, CANOPY_Z1 = 1.8;
 
 const se = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
 
 // Deform a high resolution sphere (poles along Z) into a superellipsoid shaped by profile curves.
-function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tumble = 0.24, pinch = 0.1 }) {
+function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tumble = 0.24, pinch = 0.1, crown = null }) {
   const geo = new THREE.SphereGeometry(1, 128, 64);
   geo.rotateX(Math.PI / 2);
   const p = geo.attributes.position;
@@ -53,7 +58,8 @@ function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tu
     const uBody = zz / HALF_LEN;
     const t = top(u, uBody), b = bottom(u, uBody), w = width(u, uBody);
     const yy = se(y, ey), xx = se(x, ex);
-    const Y = (t + b) / 2 + yy * (t - b) / 2;
+    let Y = (t + b) / 2 + yy * (t - b) / 2;
+    if (crown) Y += crown(uBody, Math.abs(xx)) * Math.max(0, yy) ** 2;
     const k = 1 - tumble * Math.max(0, yy) ** 2 - pinch * Math.max(0, -yy) ** 2;
     p.setXYZ(i, xx * w * k, Y, zz);
   }
@@ -73,21 +79,25 @@ function makeWheel(mats) {
   sidewall.rotation.y = Math.PI / 2;
   sidewall.position.x = 0.13;
   spin.add(sidewall);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.235, 0.235, 0.275, 40), mats.rim);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.255, 0.255, 0.275, 48), mats.rimDark);
   rim.rotation.z = Math.PI / 2;
   spin.add(rim);
-  const face = new THREE.Mesh(new THREE.CircleGeometry(0.225, 40), mats.rimDark);
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.012, 8, 48), mats.rim);
+  lip.rotation.y = Math.PI / 2;
+  lip.position.x = 0.14;
+  spin.add(lip);
+  const face = new THREE.Mesh(new THREE.CircleGeometry(0.245, 48), mats.rimDark);
   face.rotation.y = Math.PI / 2;
   face.position.x = 0.139;
   spin.add(face);
-  // aero turbine spokes
-  const spokeGeo = new THREE.BoxGeometry(0.03, 0.2, 0.05);
-  for (let k = 0; k < 10; k++) {
-    const sp = new THREE.Mesh(spokeGeo, mats.rim);
-    const ang = (k / 10) * Math.PI * 2;
-    sp.position.set(0.142, Math.cos(ang) * 0.115, Math.sin(ang) * 0.115);
+  // two-tone turbine aero blades
+  const bladeGeo = new THREE.BoxGeometry(0.025, 0.2, 0.055);
+  for (let k = 0; k < 14; k++) {
+    const sp = new THREE.Mesh(bladeGeo, k % 2 ? mats.rim : mats.rimDark);
+    const ang = (k / 14) * Math.PI * 2;
+    sp.position.set(0.143, Math.cos(ang) * 0.135, Math.sin(ang) * 0.135);
     sp.rotation.x = -ang;
-    sp.rotation.y = 0.35;
+    sp.rotation.y = 0.45;
     spin.add(sp);
   }
   const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.02, 20), mats.chrome);
@@ -125,8 +135,8 @@ function flameMaterial(color) {
   });
 }
 
-export function buildRoadster(paintKey = 'red') {
-  const paint = PAINTS[paintKey] || PAINTS.red;
+export function buildRoadster(paintKey = 'white') {
+  const paint = PAINTS[paintKey] || PAINTS.white;
   const mats = {
     paint: new THREE.MeshPhysicalMaterial({
       color: paint.color,
@@ -140,7 +150,7 @@ export function buildRoadster(paintKey = 'red') {
     black: new THREE.MeshStandardMaterial({ color: 0x0a0a0b, roughness: 0.45, metalness: 0.3 }),
     carbon: new THREE.MeshPhysicalMaterial({ color: 0x111214, roughness: 0.35, metalness: 0.4, clearcoat: 0.6 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92 }),
-    rim: new THREE.MeshStandardMaterial({ color: 0x3a3d42, metalness: 0.9, roughness: 0.3 }),
+    rim: new THREE.MeshStandardMaterial({ color: 0xb9bcc0, metalness: 0.95, roughness: 0.22 }),
     rimDark: new THREE.MeshStandardMaterial({ color: 0x15171a, metalness: 0.8, roughness: 0.4 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.1 }),
     disc: new THREE.MeshStandardMaterial({ color: 0x777777, metalness: 0.9, roughness: 0.45 }),
@@ -154,7 +164,10 @@ export function buildRoadster(paintKey = 'red') {
   const chassis = new THREE.Group(); // gets roll/pitch/suspension
   group.add(chassis);
 
-  const bodyGeo = sculpt({ top: BODY_TOP, bottom: BODY_BOTTOM, width: BODY_WIDTH, z0: -HALF_LEN, z1: HALF_LEN });
+  const bodyGeo = sculpt({
+    top: BODY_TOP, bottom: BODY_BOTTOM, width: BODY_WIDTH, z0: -HALF_LEN, z1: HALF_LEN,
+    crown: (u, ax) => -HOOD_DIP(u) * (1 - ax ** 3) + HAUNCH(u) * ax ** 4,
+  });
   const body = new THREE.Mesh(bodyGeo, mats.paint);
   body.castShadow = true;
   body.receiveShadow = true;
@@ -162,61 +175,70 @@ export function buildRoadster(paintKey = 'red') {
 
   const canopyGeo = sculpt({
     top: CANOPY_TOP,
-    bottom: (u, ub) => BODY_TOP(ub) - 0.1,
+    bottom: (u, ub) => BODY_TOP(ub) - HOOD_DIP(ub) - 0.1,
     width: CANOPY_WIDTH,
-    z0: CANOPY_Z0, z1: CANOPY_Z1, ex: 0.5, ey: 0.6, ez: 0.55, tumble: 0.35, pinch: 0,
+    z0: CANOPY_Z0, z1: CANOPY_Z1, ex: 0.55, ey: 0.62, ez: 0.6, tumble: 0.38, pinch: 0,
   });
   const canopy = new THREE.Mesh(canopyGeo, mats.glass);
   canopy.castShadow = true;
   chassis.add(canopy);
 
-  // Targa roof seam
-  const seam = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.012, 0.02), mats.black);
-  seam.position.set(0, 1.205, 0.35);
-  chassis.add(seam);
+  // removable targa roof panel seams
+  for (const z of [-0.2, 0.75]) {
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.01, 0.015), mats.black);
+    seam.position.set(0, CANOPY_TOP((z - CANOPY_Z0) / (CANOPY_Z1 - CANOPY_Z0) * 2 - 1) + 0.004, z);
+    chassis.add(seam);
+  }
 
   // Lights follow the sculpted surface
   const at = (zWorld) => ({ top: BODY_TOP(zWorld / HALF_LEN), w: BODY_WIDTH(zWorld / HALF_LEN) });
   for (const sx of [-1, 1]) {
-    const f = at(-1.9);
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.035, 0.12), mats.headlight);
-    hl.position.set(sx * f.w * 0.6, f.top - 0.09, -1.93);
-    hl.rotation.y = sx * 0.42;
-    hl.rotation.x = 0.35;
+    // slim angular headlights set into the leading edge of each fender
+    const f = at(-1.88);
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.028, 0.1), mats.headlight);
+    hl.position.set(sx * f.w * 0.6, f.top - 0.11, -1.88);
+    hl.rotation.set(0.4, sx * 0.55, -sx * 0.18);
     chassis.add(hl);
-    const intake = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.55), mats.carbon);
-    intake.position.set(sx * 0.96, 0.48, 0.85);
-    chassis.add(intake);
-    const pod = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 8), mats.paint);
-    pod.scale.set(1, 0.7, 1.6);
-    pod.position.set(sx * 0.82, BODY_TOP(-0.62 / HALF_LEN) + 0.03, -0.62);
-    chassis.add(pod);
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.12), mats.glass);
+    lens.position.set(sx * f.w * 0.6, f.top - 0.13, -1.87);
+    lens.rotation.copy(hl.rotation);
+    chassis.add(lens);
+    // sculpted black air scoop on the lower door / rear quarter
+    const scoopShape = new THREE.Shape();
+    scoopShape.moveTo(0, 0); scoopShape.lineTo(1.05, 0.04); scoopShape.lineTo(0.95, 0.24); scoopShape.lineTo(0.2, 0.08); scoopShape.lineTo(0, 0);
+    const scoopGeo = new THREE.ExtrudeGeometry(scoopShape, { depth: 0.04, bevelEnabled: false });
+    scoopGeo.rotateY(-Math.PI / 2);
+    const scoop = new THREE.Mesh(scoopGeo, mats.black);
+    scoop.position.set(sx > 0 ? 0.96 : -0.92, 0.33, -0.15); // geometry spans x in [-0.04, 0]
+    chassis.add(scoop);
+    // black rocker panel
+    const rocker = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.07, 1.9), mats.black);
+    rocker.position.set(sx * 0.86, 0.24, 0.0);
+    chassis.add(rocker);
   }
+  // thin taillights wrapping the rear corners, joined by a faint light line under the ducktail
   const r = at(2.08);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(r.w * 1.55, 0.035, 0.05), mats.taillight);
-  tail.position.set(0, r.top - 0.06, 2.08);
-  tail.rotation.x = -0.5;
-  chassis.add(tail);
+  for (const sx of [-1, 1]) {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.032, 0.05), mats.taillight);
+    tl.position.set(sx * r.w * 0.5, r.top - 0.08, 2.04);
+    tl.rotation.set(-0.5, sx * 0.3, 0);
+    chassis.add(tl);
+  }
+  const line = new THREE.Mesh(new THREE.BoxGeometry(r.w * 0.8, 0.008, 0.02), mats.taillight);
+  line.position.set(0, r.top - 0.075, 2.11);
+  chassis.add(line);
   const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 0.3), mats.carbon);
   diffuser.position.set(0, 0.25, 1.92);
   chassis.add(diffuser);
-  for (let k = -2; k <= 2; k++) {
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.1, 0.3), mats.carbon);
-    fin.position.set(k * 0.22, 0.2, 1.95);
-    chassis.add(fin);
-  }
   const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.03, 0.14), mats.black);
   splitter.position.set(0, 0.19, -1.98);
   chassis.add(splitter);
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.07, 0.06), mats.black);
-  grille.position.set(0, 0.33, -2.1);
+  // grille-less nose: one wide, low black intake
+  const intakeShape = new THREE.Shape();
+  intakeShape.moveTo(-0.62, 0); intakeShape.lineTo(0.62, 0); intakeShape.lineTo(0.5, 0.09); intakeShape.lineTo(-0.5, 0.09); intakeShape.lineTo(-0.62, 0);
+  const grille = new THREE.Mesh(new THREE.ExtrudeGeometry(intakeShape, { depth: 0.08, bevelEnabled: false }), mats.black);
+  grille.position.set(0, 0.25, -2.12);
   chassis.add(grille);
-  const skirtGeo = new THREE.BoxGeometry(0.06, 0.08, 1.6);
-  for (const sx of [-1, 1]) {
-    const skirt = new THREE.Mesh(skirtGeo, mats.carbon);
-    skirt.position.set(sx * 0.8, 0.24, 0.0);
-    chassis.add(skirt);
-  }
 
   // SpaceX package: rear cold-gas thruster nozzles hidden behind the plate + lift thrusters
   const nozzles = [];
@@ -260,8 +282,8 @@ export function buildRoadster(paintKey = 'red') {
   // Wheels
   const wheels = [];
   const pivots = [];
-  const track = 0.85;
-  for (const [x, z, front] of [[-track, -1.27, true], [track, -1.27, true], [-track, 1.25, false], [track, 1.25, false]]) {
+  const track = 0.86;
+  for (const [x, z, front] of [[-track, -1.3, true], [track, -1.3, true], [-track, 1.3, false], [track, 1.3, false]]) {
     const pivot = new THREE.Group();
     pivot.position.set(x, WHEEL_R, z);
     const { wheel, spin } = makeWheel(mats);
@@ -288,7 +310,7 @@ export function buildRoadster(paintKey = 'red') {
 }
 
 export function setPaint(model, paintKey) {
-  const p = PAINTS[paintKey] || PAINTS.red;
+  const p = PAINTS[paintKey] || PAINTS.white;
   model.mats.paint.color.setHex(p.color);
   model.mats.paint.metalness = p.metalness;
   model.mats.paint.roughness = p.roughness;
