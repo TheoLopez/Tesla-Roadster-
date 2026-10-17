@@ -173,7 +173,7 @@ class Game {
     top.position.y = 7.5;
     top.rotation.x = Math.PI / 2;
     s.add(top);
-    const key = new THREE.SpotLight(0xffffff, 260, 30, 0.42, 0.6, 1.6);
+    const key = new THREE.SpotLight(0xffffff, 130, 30, 0.42, 0.6, 1.6);
     key.position.set(2, 9, 3);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -293,8 +293,8 @@ class Game {
     this.renderPass.scene = this.showroom;
     this.renderPass.camera = this.showroomCam;
     this.renderer.toneMappingExposure = 1.0;
-    this.bloom.strength = 0.25;
-    this.bloom.threshold = 0.88;
+    this.bloom.strength = 0.2;
+    this.bloom.threshold = 0.95;
     if (this.audio.ctx) this.audio.playTrack('menu');
     this.audio.updateCar({ speed: 0, throttle: false, boost: 0, lift: 0, grounded: true, scrape: false, active: false });
   }
@@ -701,6 +701,8 @@ class Game {
       const ev = c.update(h, { ...inp, jumpPressed: inp.jumpPressed && s === 0 }, this.world);
       if (ev.jumped) {
         this.audio.jump();
+        // burst of white cold gas from the lift thrusters
+        this.dust.emit(new THREE.Vector3(c.pos.x, 0.25, c.pos.z), 40, { color: 0xf6f8fa, speed: 7, spread: 1.3, up: 0.3, life: 0.9, size: 1.4, gravity: -0.4, drag: 2.6 });
         this.dust.emit(new THREE.Vector3(c.pos.x, 0.2, c.pos.z), 26, { color: 0x8a8580, speed: 5, spread: 1.4, up: 0.6, life: 1.2, size: 1.3, gravity: -0.3, drag: 2 });
       }
       if (ev.landed > 5) {
@@ -721,13 +723,13 @@ class Game {
     if (c.liftLevel > 0.3) {
       for (const [x, z] of [[-0.72, -1.4], [0.72, 1.55]]) {
         const p = new THREE.Vector3(x, 0.1, z).applyAxisAngle(new THREE.Vector3(0, 1, 0), c.yaw).add(c.pos);
-        this.sparks.emit(p, 2, { color: 0x5ab4ff, speed: 3, spread: 0.3, up: 0, life: 0.35, size: 0.4, gravity: 18, dir: new THREE.Vector3(0, -2, 0) });
+        this.dust.emit(p, 2, { color: 0xf4f6f8, speed: 4, spread: 0.35, up: 0, life: 0.55, size: 0.9, gravity: 6, drag: 2.5, dir: new THREE.Vector3(0, -2.5, 0) });
       }
       if (c.pos.y < 3) this.dust.emit(new THREE.Vector3(c.pos.x, 0.1, c.pos.z), 1, { color: 0x9a9590, speed: 6, spread: 1.5, up: 0.2, life: 0.9, size: 1.4, gravity: -0.3, drag: 2 });
     }
     if (c.boosting) {
       const p = new THREE.Vector3(0, 0.48, 2.6).applyAxisAngle(new THREE.Vector3(0, 1, 0), c.yaw).add(c.pos);
-      this.sparks.emit(p, 3, { color: 0x6ac0ff, speed: 2, spread: 0.2, up: 0, life: 0.25, size: 0.45, gravity: 0, dir: new THREE.Vector3(-c.forwardX * 8, 0, -c.forwardZ * 8) });
+      this.dust.emit(p, 2, { color: 0xf4f6f8, speed: 2, spread: 0.25, up: 0, life: 0.45, size: 0.9, gravity: -0.5, drag: 3, dir: new THREE.Vector3(-c.forwardX * 6, 0, -c.forwardZ * 6) });
     }
 
     this.invuln = Math.max(0, this.invuln - dt);

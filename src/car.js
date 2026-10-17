@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { glowTexture } from './textures.js';
 
 // Car faces -Z. Length ~4.3 m, width ~2.0 m, height ~1.2 m, inspired by the 2nd gen Roadster.
@@ -47,9 +48,13 @@ const CANOPY_Z0 = -0.95, CANOPY_Z1 = 1.8;
 const se = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), e);
 
 // Deform a high resolution sphere (poles along Z) into a superellipsoid shaped by profile curves.
-function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tumble = 0.24, pinch = 0.1, crown = null }) {
-  const geo = new THREE.SphereGeometry(1, 128, 64);
+function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tumble = 0.24, pinch = 0.1, crown = null, res = [192, 96] }) {
+  let geo = new THREE.SphereGeometry(1, res[0], res[1]);
   geo.rotateX(Math.PI / 2);
+  // weld the UV seam so normals are smooth across it (no visible crease on the paint or glass)
+  geo.deleteAttribute('uv');
+  geo.deleteAttribute('normal');
+  geo = mergeVertices(geo, 1e-5);
   const p = geo.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -65,6 +70,34 @@ function sculpt({ top, bottom, width, z0, z1, ex = 0.32, ey = 0.42, ez = 0.7, tu
   }
   geo.computeVertexNormals();
   return geo;
+}
+
+const TRACK = 0.84;
+const AXLES = [-1.3, 1.3];
+
+// Push the body surface inwards around each wheel to form arches, and darken the wells.
+function carveWheelArches(geo) {
+  const p = geo.attributes.position;
+  const col = new Float32Array(p.count * 3);
+  const R = 0.46, inner = TRACK - 0.2;
+  for (let i = 0; i < p.count; i++) {
+    let x = p.getX(i);
+    const y = p.getY(i), z = p.getZ(i);
+    let dark = 0;
+    for (const zc of AXLES) {
+      const d = Math.hypot(y - WHEEL_R, z - zc);
+      const t = 1 - THREE.MathUtils.smoothstep(d, R - 0.11, R); // 1 inside the arch, 0 outside
+      if (t > 0 && Math.abs(x) > inner) {
+        x = Math.sign(x) * THREE.MathUtils.lerp(Math.abs(x), inner, t);
+        dark = Math.max(dark, t);
+      }
+    }
+    p.setX(i, x);
+    const c = 1 - dark * 0.93;
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = c;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
 }
 
 function makeWheel(mats) {
@@ -119,18 +152,25 @@ function flameMaterial(color) {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
     uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(color) }, uPower: { value: 0 } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-    fragmentShader: `
-      uniform float uTime; uniform vec3 uColor; uniform float uPower; varying vec2 vUv;
+    vertexShader: `varying vec2 vUv; varying float vFacing;
       void main(){
-        float along = vUv.y;               // 0 tip -> 1 base
-        float flick = 0.75 + 0.25*sin(uTime*60.0 + vUv.x*30.0);
-        float core = smoothstep(0.0, 1.0, along);
-        vec3 col = mix(uColor, vec3(1.0), pow(core, 3.0));
-        float a = core * flick * uPower;
-        gl_FragColor = vec4(col * a * 2.2, a);
+        vUv = uv;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vFacing = abs(dot(normalize(normalMatrix * normal), normalize(-mv.xyz)));
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform float uTime; uniform vec3 uColor; uniform float uPower; varying vec2 vUv; varying float vFacing;
+      void main(){
+        // cold gas: dense white vapour at the nozzle that thins out and swirls downstream
+        float along = vUv.y;               // 1 at the nozzle -> 0 at the end of the plume
+        float swirl = 0.7 + 0.3 * sin(uTime * 38.0 + vUv.x * 25.0 + along * 18.0);
+        float core = pow(smoothstep(0.0, 1.0, along), 1.6);
+        vec3 col = mix(uColor, vec3(1.0), core);
+        float a = core * swirl * uPower * 0.55 * pow(vFacing, 1.5);
+        gl_FragColor = vec4(col, a);
       }`,
   });
 }
@@ -143,11 +183,14 @@ export function buildRoadster(paintKey = 'white') {
       metalness: paint.metalness,
       roughness: paint.roughness,
       clearcoat: 1,
-      clearcoatRoughness: 0.03,
-      envMapIntensity: 1.2,
+      clearcoatRoughness: 0.02,
+      envMapIntensity: 1.35,
+      vertexColors: true,
     }),
-    glass: new THREE.MeshPhysicalMaterial({ color: 0x050608, metalness: 0.2, roughness: 0.04, clearcoat: 1, envMapIntensity: 1.6 }),
+    glass: new THREE.MeshPhysicalMaterial({ color: 0x06080b, metalness: 0.05, roughness: 0.0, clearcoat: 1, clearcoatRoughness: 0, ior: 1.6, specularIntensity: 1, envMapIntensity: 1.7 }),
+    lens: new THREE.MeshPhysicalMaterial({ color: 0x0b0d10, metalness: 0.1, roughness: 0.02, clearcoat: 1, envMapIntensity: 2 }),
     black: new THREE.MeshStandardMaterial({ color: 0x0a0a0b, roughness: 0.45, metalness: 0.3 }),
+    blackDouble: new THREE.MeshStandardMaterial({ color: 0x0a0a0b, roughness: 0.4, metalness: 0.3, side: THREE.DoubleSide }),
     carbon: new THREE.MeshPhysicalMaterial({ color: 0x111214, roughness: 0.35, metalness: 0.4, clearcoat: 0.6 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.92 }),
     rim: new THREE.MeshStandardMaterial({ color: 0xb9bcc0, metalness: 0.95, roughness: 0.22 }),
@@ -157,7 +200,7 @@ export function buildRoadster(paintKey = 'white') {
     caliper: new THREE.MeshStandardMaterial({ color: 0xd01020, metalness: 0.3, roughness: 0.4 }),
     headlight: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xdfefff, emissiveIntensity: 4 }),
     taillight: new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff1020, emissiveIntensity: 3 }),
-    nozzle: new THREE.MeshStandardMaterial({ color: 0x222, metalness: 1, roughness: 0.3, emissive: 0x0050ff, emissiveIntensity: 0 }),
+    nozzle: new THREE.MeshStandardMaterial({ color: 0x2a2c30, metalness: 1, roughness: 0.25, emissive: 0xffffff, emissiveIntensity: 0 }),
   };
 
   const group = new THREE.Group();
@@ -167,7 +210,9 @@ export function buildRoadster(paintKey = 'white') {
   const bodyGeo = sculpt({
     top: BODY_TOP, bottom: BODY_BOTTOM, width: BODY_WIDTH, z0: -HALF_LEN, z1: HALF_LEN,
     crown: (u, ax) => -HOOD_DIP(u) * (1 - ax ** 3) + HAUNCH(u) * ax ** 4,
+    res: [288, 180],
   });
+  carveWheelArches(bodyGeo);
   const body = new THREE.Mesh(bodyGeo, mats.paint);
   body.castShadow = true;
   body.receiveShadow = true;
@@ -177,92 +222,82 @@ export function buildRoadster(paintKey = 'white') {
     top: CANOPY_TOP,
     bottom: (u, ub) => BODY_TOP(ub) - HOOD_DIP(ub) - 0.1,
     width: CANOPY_WIDTH,
-    z0: CANOPY_Z0, z1: CANOPY_Z1, ex: 0.55, ey: 0.62, ez: 0.6, tumble: 0.38, pinch: 0,
+    z0: CANOPY_Z0, z1: CANOPY_Z1, ex: 0.72, ey: 0.8, ez: 0.62, tumble: 0.3, pinch: 0,
   });
   const canopy = new THREE.Mesh(canopyGeo, mats.glass);
   canopy.castShadow = true;
   chassis.add(canopy);
 
-  // removable targa roof panel seams
-  for (const z of [-0.2, 0.75]) {
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.01, 0.015), mats.black);
-    seam.position.set(0, CANOPY_TOP((z - CANOPY_Z0) / (CANOPY_Z1 - CANOPY_Z0) * 2 - 1) + 0.004, z);
-    chassis.add(seam);
-  }
-
-  // Lights follow the sculpted surface
-  const at = (zWorld) => ({ top: BODY_TOP(zWorld / HALF_LEN), w: BODY_WIDTH(zWorld / HALF_LEN) });
+  // Details are projected onto the sculpted body with rays so they sit flush on the paint.
+  body.updateMatrixWorld();
+  const ray = new THREE.Raycaster();
+  const Z = new THREE.Vector3(0, 0, 1);
+  const UP = new THREE.Vector3(0, 1, 0);
+  const stick = (obj, from, dir, { offset = 0.003, spin = 0, axis = Z } = {}) => {
+    ray.set(new THREE.Vector3(...from), new THREE.Vector3(...dir).normalize());
+    const hit = ray.intersectObject(body, false)[0];
+    if (!hit) return null;
+    const n = hit.face.normal.clone().normalize();
+    obj.position.copy(hit.point).addScaledVector(n, offset);
+    if (axis === Z) {
+      // keep decals level: local X stays horizontal, local Z follows the surface normal
+      const xAxis = new THREE.Vector3().crossVectors(UP, n);
+      if (xAxis.lengthSq() < 1e-6) xAxis.set(1, 0, 0);
+      xAxis.normalize();
+      const yAxis = new THREE.Vector3().crossVectors(n, xAxis);
+      obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, n));
+    } else obj.quaternion.setFromUnitVectors(axis, n);
+    obj.rotateOnAxis(axis, spin);
+    chassis.add(obj);
+    return hit;
+  };
   for (const sx of [-1, 1]) {
-    // slim angular headlights set into the leading edge of each fender
-    const f = at(-1.88);
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.028, 0.1), mats.headlight);
-    hl.position.set(sx * f.w * 0.6, f.top - 0.11, -1.88);
-    hl.rotation.set(0.4, sx * 0.55, -sx * 0.18);
-    chassis.add(hl);
-    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.12), mats.glass);
-    lens.position.set(sx * f.w * 0.6, f.top - 0.13, -1.87);
-    lens.rotation.copy(hl.rotation);
-    chassis.add(lens);
+    // slim, slanted headlights in the leading edge of each fender: dark lens + light blade + DRL
+    stick(new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.075, 0.008), mats.lens), [sx * 0.62, 0.42, -3], [0, 0, 1], { offset: 0.002, spin: sx * 0.22 });
+    stick(new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.018, 0.01), mats.headlight), [sx * 0.62, 0.435, -3], [0, 0, 1], { offset: 0.007, spin: sx * 0.22 });
+    stick(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.01, 0.01), mats.headlight), [sx * 0.68, 0.39, -3], [0, 0, 1], { offset: 0.007, spin: sx * 0.22 });
+    // thin taillights on the rear face
+    stick(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.008), mats.lens), [sx * 0.52, 0.62, 3], [0, 0, -1], { offset: 0.002, spin: -sx * 0.08 });
+    stick(new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.02, 0.01), mats.taillight), [sx * 0.52, 0.625, 3], [0, 0, -1], { offset: 0.007, spin: -sx * 0.08 });
     // sculpted black air scoop on the lower door / rear quarter
     const scoopShape = new THREE.Shape();
-    scoopShape.moveTo(0, 0); scoopShape.lineTo(1.05, 0.04); scoopShape.lineTo(0.95, 0.24); scoopShape.lineTo(0.2, 0.08); scoopShape.lineTo(0, 0);
-    const scoopGeo = new THREE.ExtrudeGeometry(scoopShape, { depth: 0.04, bevelEnabled: false });
-    scoopGeo.rotateY(-Math.PI / 2);
-    const scoop = new THREE.Mesh(scoopGeo, mats.black);
-    scoop.position.set(sx > 0 ? 0.96 : -0.92, 0.33, -0.15); // geometry spans x in [-0.04, 0]
-    chassis.add(scoop);
-    // black rocker panel
-    const rocker = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.07, 1.9), mats.black);
-    rocker.position.set(sx * 0.86, 0.24, 0.0);
-    chassis.add(rocker);
+    scoopShape.moveTo(0, 0); scoopShape.lineTo(1.0, 0.04); scoopShape.quadraticCurveTo(1.0, 0.2, 0.9, 0.22); scoopShape.lineTo(0.2, 0.07); scoopShape.lineTo(0, 0);
+    const scoopGeo = new THREE.ExtrudeGeometry(scoopShape, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2, curveSegments: 12 });
+    scoopGeo.translate(-0.5, 0, 0);
+    if (sx > 0) scoopGeo.scale(-1, 1, 1); // mirrored so the wide end points rearwards on both sides
+    stick(new THREE.Mesh(scoopGeo, mats.blackDouble), [sx * 3, 0.36, 0.3], [-sx, 0, 0], { offset: 0.0 });
   }
-  // thin taillights wrapping the rear corners, joined by a faint light line under the ducktail
-  const r = at(2.08);
-  for (const sx of [-1, 1]) {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.032, 0.05), mats.taillight);
-    tl.position.set(sx * r.w * 0.5, r.top - 0.08, 2.04);
-    tl.rotation.set(-0.5, sx * 0.3, 0);
-    chassis.add(tl);
-  }
-  const line = new THREE.Mesh(new THREE.BoxGeometry(r.w * 0.8, 0.008, 0.02), mats.taillight);
-  line.position.set(0, r.top - 0.075, 2.11);
-  chassis.add(line);
-  const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 0.3), mats.carbon);
-  diffuser.position.set(0, 0.25, 1.92);
+  // light line across the tail between the lamps
+  stick(new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.007, 0.008), mats.taillight), [0, 0.625, 3], [0, 0, -1], { offset: 0.006 });
+  // grille-less nose: one wide, low black intake
+  stick(new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.07, 0.01), mats.black), [0, 0.27, -3], [0, 0, 1], { offset: 0.003 });
+  const diffuser = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 0.3), mats.carbon);
+  diffuser.position.set(0, 0.24, 1.9);
   chassis.add(diffuser);
   const splitter = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.03, 0.14), mats.black);
   splitter.position.set(0, 0.19, -1.98);
   chassis.add(splitter);
-  // grille-less nose: one wide, low black intake
-  const intakeShape = new THREE.Shape();
-  intakeShape.moveTo(-0.62, 0); intakeShape.lineTo(0.62, 0); intakeShape.lineTo(0.5, 0.09); intakeShape.lineTo(-0.5, 0.09); intakeShape.lineTo(-0.62, 0);
-  const grille = new THREE.Mesh(new THREE.ExtrudeGeometry(intakeShape, { depth: 0.08, bevelEnabled: false }), mats.black);
-  grille.position.set(0, 0.25, -2.12);
-  chassis.add(grille);
 
   // SpaceX package: rear cold-gas thruster nozzles hidden behind the plate + lift thrusters
   const nozzles = [];
   const flames = [];
-  const flameMat = flameMaterial(0x3aa0ff);
-  const flameGeo = new THREE.ConeGeometry(0.11, 1.6, 20, 1, true);
+  const flameMat = flameMaterial(0xdfe6ee);
+  const flameGeo = new THREE.ConeGeometry(0.32, 1.8, 24, 1, true);
   flameGeo.rotateX(-Math.PI / 2); // tip towards +Z
-  flameGeo.translate(0, 0, 0.8);
+  flameGeo.translate(0, 0, 0.9);
   for (const sx of [-0.28, 0.28]) {
-    const n = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.12, 20, 1, true), mats.nozzle);
-    n.rotation.x = Math.PI / 2;
-    n.position.set(sx, 0.5, 2.13);
-    chassis.add(n);
+    const n = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.075, 0.05, 20, 1, true), mats.nozzle);
+    const hit = stick(n, [sx, 0.42, 3], [0, 0, -1], { offset: 0.01, axis: new THREE.Vector3(0, 1, 0) });
     nozzles.push(n);
     const f = new THREE.Mesh(flameGeo, flameMat);
-    f.position.set(sx, 0.5, 2.18);
+    f.position.set(sx, 0.42, (hit ? hit.point.z : 2.1) + 0.03);
     f.scale.setScalar(0.001);
     chassis.add(f);
     flames.push(f);
   }
   const liftFlames = [];
-  const liftGeo = new THREE.ConeGeometry(0.09, 1.1, 16, 1, true);
-  liftGeo.rotateX(Math.PI); // tip downward
-  liftGeo.translate(0, -0.55, 0);
+  const liftGeo = new THREE.ConeGeometry(0.35, 1.3, 20, 1, true); // narrow at the nozzle, widening towards the ground
+  liftGeo.translate(0, -0.65, 0);
   for (const [x, z] of [[-0.72, -1.4], [0.72, -1.4], [-0.72, 1.55], [0.72, 1.55]]) {
     const f = new THREE.Mesh(liftGeo, flameMat);
     f.position.set(x, 0.2, z);
@@ -270,20 +305,19 @@ export function buildRoadster(paintKey = 'white') {
     chassis.add(f);
     liftFlames.push(f);
   }
-  const glowTex = glowTexture('rgba(90,170,255,1)');
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+  const glowTex = glowTexture('rgba(240,244,248,0.9)');
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, depthWrite: false, transparent: true, opacity: 0 }));
   glow.scale.set(5, 2.5, 1);
   glow.position.set(0, 0.1, 0);
   chassis.add(glow);
-  const thrustLight = new THREE.PointLight(0x4aa8ff, 0, 14, 2);
+  const thrustLight = new THREE.PointLight(0xf2f6ff, 0, 10, 2);
   thrustLight.position.set(0, -0.3, 0.5);
   chassis.add(thrustLight);
 
   // Wheels
   const wheels = [];
   const pivots = [];
-  const track = 0.86;
-  for (const [x, z, front] of [[-track, -1.3, true], [track, -1.3, true], [-track, 1.3, false], [track, 1.3, false]]) {
+  for (const [x, z, front] of [[-TRACK, AXLES[0], true], [TRACK, AXLES[0], true], [-TRACK, AXLES[1], false], [TRACK, AXLES[1], false]]) {
     const pivot = new THREE.Group();
     pivot.position.set(x, WHEEL_R, z);
     const { wheel, spin } = makeWheel(mats);
@@ -509,9 +543,9 @@ export class Car {
       const s = this.liftLevel * (0.8 + Math.random() * 0.4);
       f.scale.setScalar(Math.max(0.001, s));
     }
-    m.glow.material.opacity = this.liftLevel * 0.9;
-    m.thrustLight.intensity = (this.liftLevel + this.thrustLevel) * 25;
-    for (const n of m.nozzles) n.material.emissiveIntensity = this.thrustLevel * 3;
+    m.glow.material.opacity = this.liftLevel * 0.35;
+    m.thrustLight.intensity = (this.liftLevel + this.thrustLevel) * 8;
+    for (const n of m.nozzles) n.material.emissiveIntensity = this.thrustLevel * 0.6;
 
     // ground shadow blob (visible mostly when airborne)
     m.blob.position.set(this.pos.x, 0.02, this.pos.z);

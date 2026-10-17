@@ -31,7 +31,8 @@ export class Particles {
         void main(){
           vColor = color; vAlpha = alpha;
           vec4 mv = modelViewMatrix * vec4(position,1.0);
-          gl_PointSize = size * uScale / max(0.1, -mv.z);
+          // smoke and vapour puffs expand as they fade
+          gl_PointSize = size * uScale / max(0.1, -mv.z) * ${additive ? '1.0' : '(1.0 + (1.0 - alpha) * 1.5)'};
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
