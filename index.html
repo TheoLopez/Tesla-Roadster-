@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#000000" />
+    <title>Roadster: Thrust City</title>
+    <meta name="description" content="Simulador web en tercera persona: conduce un superdeportivo eléctrico con propulsores y salta sobre tráfico, arroyos, huecos y peatones." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2212%22 fill=%22%23000%22/%3E%3Cpath d=%22M10 40 Q18 26 32 25 Q46 26 54 40 Z%22 fill=%22%23e82127%22/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="vignette"></div>
+
+    <!-- Loading -->
+    <div id="loading" class="screen show">
+      <div class="brand small">ROADSTER</div>
+      <div class="loader"><span></span></div>
+      <div class="loading-text" id="loading-text">Preparando la ciudad…</div>
+    </div>
+
+    <!-- Main menu -->
+    <div id="menu" class="screen">
+      <div class="menu-top">
+        <div class="brand">ROADSTER</div>
+        <div class="tagline">THRUST CITY · PAQUETE SPACEX</div>
+      </div>
+      <div class="specs">
+        <div><b>1.9<small>s</small></b><span>0-100 km/h</span></div>
+        <div><b>280<small> km/h</small></b><span>Con propulsor</span></div>
+        <div><b>5<small> m</small></b><span>Vuelo con propulsores</span></div>
+      </div>
+      <div class="menu-buttons">
+        <button class="btn primary" id="btn-play">Conducir</button>
+        <button class="btn" id="btn-levels">Niveles</button>
+        <button class="btn" id="btn-settings">Ajustes</button>
+        <button class="btn" id="btn-controls">Controles</button>
+      </div>
+      <div class="paints" id="paints"></div>
+      <div class="paint-name" id="paint-name"></div>
+      <div class="disclaimer">Juego de fans, sin afiliación oficial con ninguna marca.</div>
+    </div>
+
+    <!-- Level select -->
+    <div id="levels" class="screen panel-screen">
+      <div class="panel wide">
+        <div class="panel-head">
+          <h2>Niveles</h2>
+          <button class="icon-btn" data-back>✕</button>
+        </div>
+        <div class="level-grid" id="level-grid"></div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="settings" class="screen panel-screen">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Ajustes</h2>
+          <button class="icon-btn" data-back>✕</button>
+        </div>
+        <label class="row">Calidad gráfica
+          <select id="set-quality">
+            <option value="ultra">Ultra</option>
+            <option value="high">Alta</option>
+            <option value="medium">Media</option>
+            <option value="low">Baja</option>
+          </select>
+        </label>
+        <label class="row">Música <input type="range" id="set-music" min="0" max="1" step="0.05" /></label>
+        <label class="row">Efectos <input type="range" id="set-sfx" min="0" max="1" step="0.05" /></label>
+        <label class="row">Cámara
+          <select id="set-camera">
+            <option value="0">Persecución</option>
+            <option value="1">Cercana</option>
+            <option value="2">Lejana</option>
+            <option value="3">Capó</option>
+          </select>
+        </label>
+        <button class="btn small danger" id="btn-reset">Borrar progreso</button>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="controls" class="screen panel-screen">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Controles</h2>
+          <button class="icon-btn" data-back>✕</button>
+        </div>
+        <div class="keys">
+          <div><kbd>W</kbd><kbd>↑</kbd><span>Acelerar</span></div>
+          <div><kbd>S</kbd><kbd>↓</kbd><span>Frenar / reversa</span></div>
+          <div><kbd>A</kbd><kbd>D</kbd><span>Girar</span></div>
+          <div><kbd>Espacio</kbd><span>Saltar · mantener = flotar</span></div>
+          <div><kbd>Shift</kbd><span>Propulsor trasero (boost)</span></div>
+          <div><kbd>C</kbd><span>Cambiar cámara</span></div>
+          <div><kbd>R</kbd><span>Volver al checkpoint</span></div>
+          <div><kbd>M</kbd><span>Silenciar</span></div>
+          <div><kbd>Esc</kbd><span>Pausa</span></div>
+        </div>
+        <p class="note">También funciona con mando (gatillos, A = saltar, X/RB = boost) y en pantallas táctiles.</p>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-level">
+          <div class="lvl-num" id="hud-lvl-num">NIVEL 1</div>
+          <div class="lvl-name" id="hud-lvl-name"></div>
+          <div class="progress"><div class="progress-fill" id="hud-progress"></div><div class="progress-marks" id="hud-marks"></div></div>
+        </div>
+        <div class="hud-time">
+          <div class="time" id="hud-time">0:00.0</div>
+          <div class="time-limit" id="hud-limit"></div>
+        </div>
+        <div class="hud-score">
+          <div class="cells"><span class="cell-icon"></span><span id="hud-cells">0</span></div>
+          <div class="score" id="hud-score">0</div>
+        </div>
+      </div>
+      <div class="hud-bottom">
+        <div class="gear" id="hud-gear">D</div>
+        <div class="speedo">
+          <div class="speed" id="hud-speed">0</div>
+          <div class="unit">km/h</div>
+        </div>
+        <div class="thrusters">
+          <div class="thr-label">PROPULSORES</div>
+          <div class="thr-bar"><div class="thr-fill" id="hud-fuel"></div></div>
+          <div class="alt" id="hud-alt">ALT 0.0 m</div>
+        </div>
+      </div>
+      <div class="hint" id="hud-hint"></div>
+      <div class="center-msg" id="hud-msg"></div>
+      <div class="popups" id="hud-popups"></div>
+      <div class="cp-flash" id="hud-cp"></div>
+    </div>
+
+    <!-- Touch controls -->
+    <div id="touch" class="hidden">
+      <div class="t-left-group">
+        <button id="t-left">◀</button>
+        <button id="t-right">▶</button>
+      </div>
+      <div class="t-right-group">
+        <button id="t-boost">BOOST</button>
+        <button id="t-jump">SALTO</button>
+        <button id="t-brake">◼</button>
+        <button id="t-gas">▲</button>
+      </div>
+      <button id="t-pause">II</button>
+    </div>
+
+    <!-- Pause -->
+    <div id="pause" class="screen panel-screen">
+      <div class="panel center">
+        <h2>Pausa</h2>
+        <button class="btn primary" id="btn-resume">Continuar</button>
+        <button class="btn" id="btn-restart">Reiniciar nivel</button>
+        <button class="btn" id="btn-quit">Menú principal</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results" class="screen panel-screen">
+      <div class="panel center">
+        <div class="res-title" id="res-title">Nivel completado</div>
+        <div class="stars" id="res-stars"></div>
+        <div class="res-grid" id="res-grid"></div>
+        <div class="res-buttons">
+          <button class="btn primary" id="btn-next">Siguiente nivel</button>
+          <button class="btn" id="btn-retry">Repetir</button>
+          <button class="btn" id="btn-menu">Menú</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
