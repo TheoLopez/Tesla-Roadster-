@@ -90,8 +90,8 @@
           <button class="icon-btn" data-back>✕</button>
         </div>
         <div class="keys">
-          <div><kbd>W</kbd><kbd>↑</kbd><span>Acelerar</span></div>
-          <div><kbd>S</kbd><kbd>↓</kbd><span>Frenar / reversa</span></div>
+          <div><kbd>W</kbd><kbd>↑</kbd><span>Pedal único: acelera; al soltarlo frena regenerando</span></div>
+          <div><kbd>S</kbd><kbd>↓</kbd><span>Freno de fricción / reversa</span></div>
           <div><kbd>A</kbd><kbd>D</kbd><span>Girar</span></div>
           <div><kbd>Espacio</kbd><span>Saltar · mantener = flotar</span></div>
           <div><kbd>Shift</kbd><span>Propulsor trasero (boost)</span></div>
@@ -100,7 +100,7 @@
           <div><kbd>M</kbd><span>Silenciar</span></div>
           <div><kbd>Esc</kbd><span>Pausa</span></div>
         </div>
-        <p class="note">También funciona con mando (gatillos, A = saltar, X/RB = boost) y en pantallas táctiles.</p>
+        <p class="note">En pantallas táctiles: gira el <b>yoke</b> de la izquierda para dirigir y usa el <b>pedal único</b> de la derecha (más abajo = más potencia; al soltarlo, el carro frena regenerando). También funciona con mando (RT analógico, A = saltar, X/RB = boost).</p>
       </div>
     </div>
 
@@ -141,15 +141,21 @@
 
     <!-- Touch controls -->
     <div id="touch" class="hidden">
-      <div class="t-left-group">
-        <button id="t-left">◀</button>
-        <button id="t-right">▶</button>
+      <!-- yoke joystick: drag / rotate to steer -->
+      <div id="t-yoke" class="t-yoke">
+        <svg viewBox="0 0 200 150" aria-hidden="true">
+          <path d="M62 16 L38 16 Q12 16 12 42 L12 108 Q12 134 38 134 L62 134 L62 112 L44 112 Q34 112 34 102 L34 48 Q34 38 44 38 L62 38 Z" fill="#ecebe7" />
+          <path d="M138 16 L162 16 Q188 16 188 42 L188 108 Q188 134 162 134 L138 134 L138 112 L156 112 Q166 112 166 102 L166 48 Q166 38 156 38 L138 38 Z" fill="#ecebe7" />
+          <path d="M20 44 L34 44 L34 106 L20 106 Z M166 44 L180 44 L180 106 L166 106 Z" fill="#141518" opacity="0.35" />
+          <rect x="30" y="66" width="140" height="20" rx="8" fill="#141518" />
+          <rect x="62" y="46" width="76" height="60" rx="16" fill="#1d1e21" stroke="#2c2d31" stroke-width="2" />
+          <path d="M92 66 L108 66 L104 86 L96 86 Z" fill="none" stroke="#4a4c52" stroke-width="2" />
+        </svg>
       </div>
       <div class="t-right-group">
         <button id="t-boost">BOOST</button>
         <button id="t-jump">SALTO</button>
-        <button id="t-brake">◼</button>
-        <button id="t-gas">▲</button>
+        <div id="t-pedal" class="t-pedal"><div class="t-pedal-face"></div><span>ONE PEDAL</span></div>
       </div>
       <button id="t-pause">II</button>
     </div>

@@ -17,6 +17,7 @@ import { setMaxAnisotropy } from './textures.js';
 const $ = (id) => document.getElementById(id);
 const SAVE_KEY = 'roadster-thrust-city-v1';
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+document.body.classList.toggle('touch', isTouch);
 
 const QUALITY = {
   ultra: { pr: 2, shadow: 4096, bloom: true, msaa: 8, shadows: true },
@@ -160,17 +161,10 @@ class Game {
     ring.rotation.x = Math.PI / 2;
     ring.position.y = 0.05;
     s.add(ring);
-    // light strips for reflections on the paint
-    const stripMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(2.2), side: THREE.DoubleSide });
-    for (let i = 0; i < 5; i++) {
-      const st = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 4), stripMat);
-      const a = -0.9 + i * 0.45;
-      st.position.set(Math.sin(a) * 14, 2.2, -Math.cos(a) * 14);
-      st.lookAt(0, 2.2, 0);
-      s.add(st);
-    }
-    const top = new THREE.Mesh(new THREE.PlaneGeometry(9, 2.2), stripMat);
-    top.position.y = 7.5;
+    // overhead softbox: only seen in the paint reflections, like a studio shoot
+    const stripMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(1.6), side: THREE.DoubleSide });
+    const top = new THREE.Mesh(new THREE.PlaneGeometry(7, 3), stripMat);
+    top.position.y = 9;
     top.rotation.x = Math.PI / 2;
     s.add(top);
     const key = new THREE.SpotLight(0xffffff, 130, 30, 0.42, 0.6, 1.6);
@@ -179,10 +173,10 @@ class Game {
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.bias = -0.0002;
     s.add(key, key.target);
-    const rim = new THREE.SpotLight(0xff3040, 70, 25, 0.5, 0.8, 1.6);
+    const rim = new THREE.SpotLight(0xffd2b0, 45, 25, 0.5, 0.8, 1.6);
     rim.position.set(-6, 3, -6);
     s.add(rim, rim.target);
-    const rim2 = new THREE.SpotLight(0x5ab0ff, 55, 25, 0.5, 0.8, 1.6);
+    const rim2 = new THREE.SpotLight(0xb8d4ff, 40, 25, 0.5, 0.8, 1.6);
     rim2.position.set(6, 2.5, -5);
     s.add(rim2, rim2.target);
     this.showroomCam = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 200);
@@ -661,7 +655,8 @@ class Game {
     const a = Math.PI * 0.8 + this.t * 0.08;
     const cam = this.showroomCam;
     cam.aspect = innerWidth / innerHeight;
-    const r = innerWidth < innerHeight ? 13 : 8.6;
+    // keep the whole car in frame on narrow (portrait) screens
+    const r = Math.max(8.6, 3.3 / (Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect));
     cam.position.set(Math.sin(a) * r, 1.55 + Math.sin(this.t * 0.2) * 0.2, Math.cos(a) * r);
     cam.lookAt(0, 0.45, 0);
     cam.updateProjectionMatrix();
@@ -697,6 +692,7 @@ class Game {
     const steps = dt > 1 / 55 ? 2 : 1;
     const h = dt / steps;
     let scrape = false;
+    let skid = 0;
     for (let s = 0; s < steps; s++) {
       const ev = c.update(h, { ...inp, jumpPressed: inp.jumpPressed && s === 0 }, this.world);
       if (ev.jumped) {
@@ -711,6 +707,7 @@ class Game {
         this.shake = Math.max(this.shake, Math.min(0.35, ev.landed * 0.015));
       }
       if (ev.scrape) scrape = true;
+      skid = Math.max(skid, ev.skid);
       if (ev.fell) { this.crash(ev.fell); break; }
     }
     if (this.state !== 'playing') return this.updateCamera(dt);
@@ -768,7 +765,7 @@ class Game {
     if (d >= this.layout.length) { c.group.visible = true; this.complete(); }
     else if (this.elapsed > this.layout.timeLimit) this.fail();
 
-    this.audio.updateCar({ speed: c.speed, throttle: inp.throttle, boost: c.thrustLevel, lift: c.liftLevel, grounded: c.grounded, scrape, active: true });
+    this.audio.updateCar({ speed: c.speed, throttle: inp.throttle > 0.12, boost: c.thrustLevel, lift: c.liftLevel, grounded: c.grounded, scrape, skid, active: true });
     this.updateCamera(dt);
     this.updateHUD();
   }

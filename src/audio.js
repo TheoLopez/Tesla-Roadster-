@@ -178,9 +178,17 @@ export class AudioEngine {
     E.scrF.Q.value = 3;
     E.scrG = this.gainNode(0);
     E.scr.connect(E.scrF).connect(E.scrG);
+    // tyre squeal when the tyres hit their grip limit
+    E.sq = this.loop(this.pink);
+    E.sqF = ctx.createBiquadFilter();
+    E.sqF.type = 'bandpass';
+    E.sqF.frequency.value = 1150;
+    E.sqF.Q.value = 9;
+    E.sqG = this.gainNode(0);
+    E.sq.connect(E.sqF).connect(E.sqG);
   }
 
-  updateCar({ speed, throttle, boost, lift, grounded, scrape, active }) {
+  updateCar({ speed, throttle, boost, lift, grounded, scrape, skid = 0, active }) {
     if (!this.ctx) return;
     const E = this.engine, t = this.ctx.currentTime, k = 0.06;
     const s = Math.abs(speed);
@@ -201,6 +209,8 @@ export class AudioEngine {
     E.thrG.gain.setTargetAtTime(on * thr * 0.32, t, 0.03);
     E.rumG.gain.setTargetAtTime(on * thr * 0.7, t, 0.04);
     E.scrG.gain.setTargetAtTime(on * (scrape ? 0.18 : 0), t, 0.04);
+    E.sqG.gain.setTargetAtTime(on * (grounded ? skid * 0.5 : 0), t, 0.05);
+    E.sqF.frequency.setTargetAtTime(950 + skid * 500 + Math.sin(t * 13) * 60, t, 0.05);
   }
 
   // ------------------------------------------------------------ one-shots

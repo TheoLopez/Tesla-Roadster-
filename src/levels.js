@@ -30,7 +30,7 @@ export const LEVELS = [
       ['plain', { len: 40 }],
     ],
     hints: [
-      { d: 5, text: 'Mantén <b>W</b> / <b>↑</b> para acelerar — 0 a 100 km/h en menos de 2 s' },
+      { d: 5, text: 'Pedal único: mantén <b>W</b> para acelerar y suéltalo para frenar regenerando' },
       { d: 160, text: 'Gira con <b>A</b> / <b>D</b> para esquivar' },
       { d: 300, text: 'Barrera completa: pulsa <b>ESPACIO</b> para saltar con los propulsores' },
       { d: 520, text: 'Los huecos se tragan las ruedas. ¡Salta por encima!' },

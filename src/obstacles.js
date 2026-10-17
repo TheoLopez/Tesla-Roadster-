@@ -64,10 +64,10 @@ function vehicleGeos(kind) {
     body.push(at(new RoundedBoxGeometry(1.8, 0.08, 2.9, 2, 0.03), 0, 1.82, 0.4));
     wheels = [[-0.85, -1.5], [0.85, -1.5], [-0.85, 1.5], [0.85, 1.5]];
   } else if (kind === 'truck') {
-    W = 2.5; L = 8.6; H = 3.5; r = 0.5;
-    body.push(at(new RoundedBoxGeometry(2.4, 2.3, 2.3, 3, 0.25), 0, 1.7, -3.1));
-    glass.push(at(new THREE.BoxGeometry(2.2, 0.8, 0.12), 0, 2.25, -4.26));
-    body.push(at(new RoundedBoxGeometry(2.5, 2.7, 6.0, 2, 0.08), 0, 2.15, 1.25));
+    W = 2.5; L = 8.6; H = 3.2; r = 0.5;
+    body.push(at(new RoundedBoxGeometry(2.4, 2.2, 2.3, 3, 0.25), 0, 1.65, -3.1));
+    glass.push(at(new THREE.BoxGeometry(2.2, 0.75, 0.12), 0, 2.15, -4.26));
+    body.push(at(new RoundedBoxGeometry(2.5, 2.4, 6.0, 2, 0.08), 0, 2.0, 1.25));
     dark.push(at(new THREE.BoxGeometry(2.2, 0.35, 8.4), 0, 0.62, -0.1));
     wheels = [[-1.0, -3.0], [1.0, -3.0], [-1.0, 1.6], [1.0, 1.6], [-1.0, 2.8], [1.0, 2.8]];
     hazard.push(at(new THREE.BoxGeometry(0.25, 0.15, 0.06), -1.0, 0.95, 4.33), at(new THREE.BoxGeometry(0.25, 0.15, 0.06), 1.0, 0.95, 4.33));
